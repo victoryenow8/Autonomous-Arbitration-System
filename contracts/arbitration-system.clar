@@ -152,4 +152,51 @@
   )
 )
 
+(define-public (cast-vote (case-id uint) (vote uint))
+  (let (
+    (case (unwrap! (get-case case-id) (err err-not-found)))
+  )
+    (asserts! (is-juror case-id) (err err-unauthorized))
+    (asserts! (is-eq (get status case) "active") (err err-invalid-state))
+    (asserts! (< block-height (get deadline case)) (err err-deadline-passed))
+    (ok (map-set cases
+      { case-id: case-id }
+      (merge case { votes: (unwrap! (as-max-len? (append (get votes case) vote) u5) (err err-invalid-state)) })
+    ))
+  )
+)
+
+(define-public (finalize-case (case-id uint) (final-verdict (string-utf8 500)))
+  (let (
+    (case (unwrap! (get-case case-id) (err err-not-found)))
+  )
+    (asserts! (is-owner) (err err-owner-only))
+    (asserts! (is-eq (get status case) "active") (err err-invalid-state))
+    (asserts! (>= block-height (get deadline case)) (err err-deadline-passed))
+    (ok (map-set cases
+      { case-id: case-id }
+      (merge case {
+        status: "resolved",
+        verdict: (some final-verdict)
+      })
+    ))
+  )
+)
+
+;; Read-only functions
+(define-read-only (get-case (case-id uint))
+  (map-get? cases { case-id: case-id })
+)
+
+(define-read-only (get-user-cases (user principal))
+  (default-to (list) (get case-ids (map-get? user-cases { user: user })))
+)
+
+(define-read-only (get-juror-pool)
+  (var-get juror-pool)
+)
+
+(define-private (random-uint (max uint))
+  (mod (len (unwrap! (get-block-info? burnchain-header-hash u0) u0)) max)
+)
 
